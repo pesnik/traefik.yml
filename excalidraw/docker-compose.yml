@@ -1,0 +1,37 @@
+services:
+  excalidraw:
+    build:
+      context: .
+      args:
+        - NODE_ENV=development
+        - VITE_APP_BASE_PATH
+        - VITE_APP_WS_SERVER_PATH
+    container_name: excalidraw
+    # ports:
+    #   - "3000:80" # Disable port forwarding if using Traefik exclusively
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.excalidraw.rule=Host(`excalidraw.localhost`)"
+      - "traefik.http.routers.excalidraw.entrypoints=web"
+      - "traefik.http.services.excalidraw.loadbalancer.server.port=80"
+    restart: on-failure
+    stdin_open: true
+    healthcheck:
+      disable: true
+    environment:
+      - NODE_ENV=development
+    networks:
+      - default
+      - traefik_default
+    volumes:
+      - ./:/opt/node_app/app:delegated
+      - ./package.json:/opt/node_app/package.json
+      - ./yarn.lock:/opt/node_app/yarn.lock
+      - notused:/opt/node_app/app/node_modules
+
+volumes:
+  notused:
+
+networks:
+  traefik_default:
+    external: true
