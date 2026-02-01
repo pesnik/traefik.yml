@@ -1,3 +1,4 @@
+```yml
 services:
   traefik:
     image: traefik:v3.6
@@ -10,3 +11,4 @@ services:
       - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+```
