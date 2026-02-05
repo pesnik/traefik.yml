@@ -1,0 +1,29 @@
+version: "3"
+services:
+  www:
+    user: "1000:1000"
+    volumes:
+      - wbo-data:/opt/app/server-data
+    build:
+      context: .
+    restart: on-failure
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+        window: 60s
+    networks:
+      - traefik_default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.wbo.rule=Host(`wbo.localhost`)"
+      - "traefik.http.routers.wbo.entrypoints=web"
+      - "traefik.http.services.wbo.loadbalancer.server.port=80"
+
+volumes:
+  wbo-data:
+
+networks:
+  traefik_default:
+    external: true
