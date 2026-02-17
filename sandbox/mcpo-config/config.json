@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "sandbox": {
+      "type": "streamablehttp",
+      "url": "http://aio-sandbox:8080/mcp"
+    }
+  }
+}
