@@ -1,313 +1,235 @@
-x-db-env: &db-env
-  PGHOST: ${PGHOST:-plane-db}
-  PGDATABASE: ${PGDATABASE:-plane}
-  POSTGRES_USER: ${POSTGRES_USER:-plane}
-  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-plane}
-  POSTGRES_DB: ${POSTGRES_DB:-plane}
-  POSTGRES_PORT: ${POSTGRES_PORT:-5432}
-  PGDATA: ${PGDATA:-/var/lib/postgresql/data}
+services:
+  plane-admin:
+    container_name: plane-admin-root
+    build:
+      context: .
+      dockerfile: ./apps/admin/Dockerfile.admin
+      args:
+        DOCKER_BUILDKIT: 1
+        VITE_API_BASE_URL: "http://plane.localhost"
+        VITE_WEB_BASE_URL: "http://plane.localhost"
+        VITE_WEB_BASE_PATH: ""
+        VITE_ADMIN_BASE_URL: "http://plane.localhost"
+        VITE_ADMIN_BASE_PATH: "/god-mode"
+        VITE_SPACE_BASE_URL: "http://plane.localhost"
+        VITE_SPACE_BASE_PATH: "/spaces"
+        VITE_LIVE_BASE_URL: "http://plane.localhost"
+        VITE_LIVE_BASE_PATH: "/live"
+    restart: unless-stopped
+    networks:
+      - traefik_default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.plane-admin.rule=Host(`plane.localhost`) && PathPrefix(`/god-mode`)"
+      - "traefik.http.routers.plane-admin.priority=100"
+      - "traefik.http.routers.plane-admin.entrypoints=web"
+      - "traefik.http.services.plane-admin.loadbalancer.server.port=3000"
 
-x-redis-env: &redis-env
-  REDIS_HOST: ${REDIS_HOST:-plane-redis}
-  REDIS_PORT: ${REDIS_PORT:-6379}
-  REDIS_URL: ${REDIS_URL:-redis://plane-redis:6379/}
+  web:
+    build:
+      context: .
+      dockerfile: ./apps/web/Dockerfile.web
+      args:
+        DOCKER_BUILDKIT: 1
+        VITE_API_BASE_URL: "http://plane.localhost"
+        VITE_WEB_BASE_URL: "http://plane.localhost"
+        VITE_WEB_BASE_PATH: ""
+        VITE_ADMIN_BASE_URL: "http://plane.localhost"
+        VITE_ADMIN_BASE_PATH: "/god-mode"
+        VITE_SPACE_BASE_URL: "http://plane.localhost"
+        VITE_SPACE_BASE_PATH: "/spaces"
+        VITE_LIVE_BASE_URL: "http://plane.localhost"
+        VITE_LIVE_BASE_PATH: "/live"
+    restart: unless-stopped
+    networks:
+      - traefik_default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.plane-web.rule=Host(`plane.localhost`)"
+      - "traefik.http.routers.plane-web.priority=10"
+      - "traefik.http.routers.plane-web.entrypoints=web"
+      - "traefik.http.services.plane-web.loadbalancer.server.port=3000"
 
-x-minio-env: &minio-env
-  MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:-access-key}
-  MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:-secret-key}
+  space:
+    build:
+      context: .
+      dockerfile: ./apps/space/Dockerfile.space
+      args:
+        DOCKER_BUILDKIT: 1
+        VITE_API_BASE_URL: "http://plane.localhost"
+        VITE_WEB_BASE_URL: "http://plane.localhost"
+        VITE_WEB_BASE_PATH: ""
+        VITE_ADMIN_BASE_URL: "http://plane.localhost"
+        VITE_ADMIN_BASE_PATH: "/god-mode"
+        VITE_SPACE_BASE_URL: "http://plane.localhost"
+        VITE_SPACE_BASE_PATH: "/spaces"
+        VITE_LIVE_BASE_URL: "http://plane.localhost"
+        VITE_LIVE_BASE_PATH: "/live"
+    restart: unless-stopped
+    networks:
+      - traefik_default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.plane-space.rule=Host(`plane.localhost`) && PathPrefix(`/spaces`)"
+      - "traefik.http.routers.plane-space.priority=80"
+      - "traefik.http.routers.plane-space.entrypoints=web"
+      - "traefik.http.services.plane-space.loadbalancer.server.port=3000"
 
-x-aws-s3-env: &aws-s3-env
-  AWS_REGION: ${AWS_REGION:-}
-  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-access-key}
-  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-secret-key}
-  AWS_S3_ENDPOINT_URL: ${AWS_S3_ENDPOINT_URL:-http://plane-minio:9000}
-  AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME:-uploads}
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile.api
+      args:
+        DOCKER_BUILDKIT: 1
+    restart: unless-stopped
+    command: ./bin/docker-entrypoint-api.sh
+    networks:
+      - traefik_default
+      - plane_backend
+    env_file:
+      - ./apps/api/.env.rootpath
+    depends_on:
+      - plane-db
+      - plane-redis
+      - plane-mq
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.plane-api.rule=Host(`plane.localhost`) && (PathPrefix(`/api`) || PathPrefix(`/auth`) || PathPrefix(`/static`))"
+      - "traefik.http.routers.plane-api.priority=100"
+      - "traefik.http.routers.plane-api.entrypoints=web"
+      - "traefik.http.services.plane-api.loadbalancer.server.port=8000"
 
-x-proxy-env: &proxy-env
-  APP_DOMAIN: ${APP_DOMAIN:-localhost}
-  FILE_SIZE_LIMIT: ${FILE_SIZE_LIMIT:-5242880}
-  CERT_EMAIL: ${CERT_EMAIL}
-  CERT_ACME_CA: ${CERT_ACME_CA}
-  CERT_ACME_DNS: ${CERT_ACME_DNS}
-  LISTEN_HTTP_PORT: ${LISTEN_HTTP_PORT:-80}
-  LISTEN_HTTPS_PORT: ${LISTEN_HTTPS_PORT:-443}
-  BUCKET_NAME: ${AWS_S3_BUCKET_NAME:-uploads}
-  SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+  worker:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile.api
+      args:
+        DOCKER_BUILDKIT: 1
+    restart: unless-stopped
+    command: ./bin/docker-entrypoint-worker.sh
+    networks:
+      - plane_backend
+    env_file:
+      - ./apps/api/.env.rootpath
+    depends_on:
+      - api
+      - plane-db
+      - plane-redis
 
-x-mq-env: &mq-env
-  RABBITMQ_HOST: ${RABBITMQ_HOST:-plane-mq}
-  RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
-  RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-plane}
-  RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-plane}
-  RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-plane}
-  RABBITMQ_VHOST: ${RABBITMQ_VHOST:-plane}
+  beat-worker:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile.api
+      args:
+        DOCKER_BUILDKIT: 1
+    restart: unless-stopped
+    command: ./bin/docker-entrypoint-beat.sh
+    networks:
+      - plane_backend
+    env_file:
+      - ./apps/api/.env.rootpath
+    depends_on:
+      - api
+      - plane-db
+      - plane-redis
 
-x-live-env: &live-env
-  API_BASE_URL: ${API_BASE_URL:-http://api:8000}
-  LIVE_SERVER_SECRET_KEY: ${LIVE_SERVER_SECRET_KEY:-2FiJk1U2aiVPEQtzLehYGlTSnTnrs7LW}
+  migrator:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile.api
+      args:
+        DOCKER_BUILDKIT: 1
+    restart: "no"
+    command: ./bin/docker-entrypoint-migrator.sh
+    networks:
+      - plane_backend
+    env_file:
+      - ./apps/api/.env.rootpath
+    depends_on:
+      - plane-db
+      - plane-redis
 
-x-app-env: &app-env
-  WEB_URL: ${WEB_URL:-http://plane.localhost}
-  DEBUG: ${DEBUG:-0}
-  CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
-  GUNICORN_WORKERS: 1
-  USE_MINIO: ${USE_MINIO:-1}
-  DATABASE_URL: ${DATABASE_URL:-postgresql://plane:plane@plane-db/plane}
-  SECRET_KEY: ${SECRET_KEY:-60gp0byfz2dvffa45cxl20p1scy9xbpf6d8c5y0geejgkyp1b5}
-  AMQP_URL: ${AMQP_URL:-amqp://plane:plane@plane-mq:5672/plane}
-  API_KEY_RATE_LIMIT: ${API_KEY_RATE_LIMIT:-60/minute}
-  MINIO_ENDPOINT_SSL: ${MINIO_ENDPOINT_SSL:-0}
-  LIVE_SERVER_SECRET_KEY: ${LIVE_SERVER_SECRET_KEY:-2FiJk1U2aiVPEQtzLehYGlTSnTnrs7LW}
+  live:
+    build:
+      context: .
+      dockerfile: ./apps/live/Dockerfile.live
+      args:
+        DOCKER_BUILDKIT: 1
+    restart: unless-stopped
+    networks:
+      - traefik_default
+      - plane_backend
+    env_file:
+      - ./apps/live/.env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.plane-live.rule=Host(`plane.localhost`) && PathPrefix(`/live`)"
+      - "traefik.http.routers.plane-live.priority=90"
+      - "traefik.http.routers.plane-live.entrypoints=web"
+      - "traefik.http.services.plane-live.loadbalancer.server.port=3000"
+
+  plane-db:
+    image: postgres:15.7-alpine
+    restart: unless-stopped
+    command: postgres -c 'max_connections=1000'
+    networks:
+      - plane_backend
+    volumes:
+      - pgdata_root:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: plane
+      POSTGRES_PASSWORD: plane
+      POSTGRES_DB: plane
+      PGDATA: /var/lib/postgresql/data
+
+  plane-redis:
+    image: valkey/valkey:7.2.11-alpine
+    restart: unless-stopped
+    networks:
+      - plane_backend
+    volumes:
+      - redisdata_root:/data
+
+  plane-mq:
+    image: rabbitmq:3.13.6-management-alpine
+    restart: unless-stopped
+    networks:
+      - plane_backend
+    environment:
+      RABBITMQ_DEFAULT_USER: plane
+      RABBITMQ_DEFAULT_PASS: plane
+      RABBITMQ_DEFAULT_VHOST: plane
+    volumes:
+      - rabbitmq_data_root:/var/lib/rabbitmq
+
+  plane-minio:
+    image: minio/minio
+    restart: unless-stopped
+    command: server /export --console-address ":9090"
+    networks:
+      - traefik_default
+      - plane_backend
+    volumes:
+      - uploads_root:/export
+    environment:
+      MINIO_ROOT_USER: access-key
+      MINIO_ROOT_PASSWORD: secret-key
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.plane-uploads.rule=Host(`plane.localhost`) && PathPrefix(`/uploads`)"
+      - "traefik.http.routers.plane-uploads.priority=99"
+      - "traefik.http.routers.plane-uploads.entrypoints=web"
+      - "traefik.http.services.plane-uploads.loadbalancer.server.port=9000"
+
+volumes:
+  pgdata_root:
+  redisdata_root:
+  uploads_root:
+  rabbitmq_data_root:
+
 
 networks:
   traefik_default:
     external: true
-  default:
+  plane_backend:
     driver: bridge
-
-services:
-  web:
-    image: artifacts.plane.so/makeplane/plane-frontend:${APP_RELEASE:-v1.2.1}
-    deploy:
-      replicas: ${WEB_REPLICAS:-1}
-      restart_policy:
-        condition: any
-    networks:
-      - traefik_default
-      - default
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=traefik"
-      - "traefik.http.routers.plane-web.rule=Host(`plane.localhost`)"
-      - "traefik.http.routers.plane-web.entrypoints=web"
-      - "traefik.http.routers.plane-web.service=plane-web"
-      - "traefik.http.routers.plane-web.priority=1"
-      - "traefik.http.services.plane-web.loadbalancer.server.port=3000"
-    environment:
-            NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://plane.localhost}
-    depends_on:
-      - api
-      - worker
-
-  space:
-    image: artifacts.plane.so/makeplane/plane-space:${APP_RELEASE:-v1.2.1}
-    deploy:
-      replicas: ${SPACE_REPLICAS:-1}
-      restart_policy:
-        condition: any
-    networks:
-      - traefik_default
-      - default
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=traefik"
-      - "traefik.http.routers.plane-space.rule=Host(`space.plane.localhost`)"
-      - "traefik.http.routers.plane-space.entrypoints=web"
-      - "traefik.http.routers.plane-space.service=plane-space"
-      - "traefik.http.services.plane-space.loadbalancer.server.port=3000"
-    depends_on:
-      - api
-      - worker
-      - web
-
-  admin:
-    image: artifacts.plane.so/makeplane/plane-admin:${APP_RELEASE:-v1.2.1}
-    deploy:
-      replicas: ${ADMIN_REPLICAS:-1}
-      restart_policy:
-        condition: any
-    networks:
-      - traefik_default
-      - default
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=traefik"
-      - "traefik.http.routers.plane-admin.rule=Host(`admin.plane.localhost`)"
-      - "traefik.http.routers.plane-admin.entrypoints=web"
-      - "traefik.http.routers.plane-admin.service=plane-admin"
-      - "traefik.http.services.plane-admin.loadbalancer.server.port=3000"
-    depends_on:
-      - api
-      - web
-
-  live:
-    image: artifacts.plane.so/makeplane/plane-live:${APP_RELEASE:-v1.2.1}
-    environment:
-      <<: [*live-env, *redis-env]
-    deploy:
-      replicas: ${LIVE_REPLICAS:-1}
-      restart_policy:
-        condition: any
-    networks:
-      - traefik_default
-      - default
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=traefik"
-      - "traefik.http.routers.plane-live.rule=Host(`live.plane.localhost`)"
-      - "traefik.http.routers.plane-live.entrypoints=web"
-      - "traefik.http.routers.plane-live.service=plane-live"
-      - "traefik.http.services.plane-live.loadbalancer.server.port=3000"
-    depends_on:
-      - api
-      - web
-
-  api:
-    image: artifacts.plane.so/makeplane/plane-backend:${APP_RELEASE:-v1.2.1}
-    command: ./bin/docker-entrypoint-api.sh
-    deploy:
-      replicas: ${API_REPLICAS:-1}
-      restart_policy:
-        condition: any
-    volumes:
-      - logs_api:/code/plane/logs
-    environment:
-      <<: [*app-env, *db-env, *redis-env, *minio-env, *aws-s3-env, *proxy-env]
-    networks:
-      - traefik_default
-      - default
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=traefik"
-      - "traefik.http.routers.plane-api.rule=Host(`plane.localhost`) && (PathPrefix(`/api`) || PathPrefix(`/auth`))"
-      - "traefik.http.routers.plane-api.entrypoints=web"
-      - "traefik.http.routers.plane-api.service=plane-api"
-      - "traefik.http.routers.plane-api.priority=100"
-      - "traefik.http.services.plane-api.loadbalancer.server.port=8000"
-    depends_on:
-      - plane-db
-      - plane-redis
-      - plane-mq
-
-  worker:
-    image: artifacts.plane.so/makeplane/plane-backend:${APP_RELEASE:-v1.2.1}
-    command: ./bin/docker-entrypoint-worker.sh
-    deploy:
-      replicas: ${WORKER_REPLICAS:-1}
-      restart_policy:
-        condition: any
-    volumes:
-      - logs_worker:/code/plane/logs
-    environment:
-      <<: [*app-env, *db-env, *redis-env, *minio-env, *aws-s3-env, *proxy-env]
-    depends_on:
-      - api
-      - plane-db
-      - plane-redis
-      - plane-mq
-
-  beat-worker:
-    image: artifacts.plane.so/makeplane/plane-backend:${APP_RELEASE:-v1.2.1}
-    command: ./bin/docker-entrypoint-beat.sh
-    deploy:
-      replicas: ${BEAT_WORKER_REPLICAS:-1}
-      restart_policy:
-        condition: any
-    volumes:
-      - logs_beat-worker:/code/plane/logs
-    environment:
-      <<: [*app-env, *db-env, *redis-env, *minio-env, *aws-s3-env, *proxy-env]
-    depends_on:
-      - api
-      - plane-db
-      - plane-redis
-      - plane-mq
-
-  migrator:
-    image: artifacts.plane.so/makeplane/plane-backend:${APP_RELEASE:-v1.2.1}
-    command: ./bin/docker-entrypoint-migrator.sh
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-    volumes:
-      - logs_migrator:/code/plane/logs
-    environment:
-      <<: [*app-env, *db-env, *redis-env, *minio-env, *aws-s3-env, *proxy-env]
-    depends_on:
-      - plane-db
-      - plane-redis
-
-  plane-db:
-    image: postgres:15.7-alpine
-    command: postgres -c 'max_connections=1000'
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: any
-    environment:
-      <<: *db-env
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-
-  plane-redis:
-    image: valkey/valkey:7.2.11-alpine
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: any
-    volumes:
-      - redisdata:/data
-
-  plane-mq:
-    image: rabbitmq:3.13.6-management-alpine
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: any
-    environment:
-      <<: *mq-env
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-
-  plane-minio:
-    image: minio/minio:latest
-    command: server /export --console-address ":9090"
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: any
-    environment:
-      <<: *minio-env
-    volumes:
-      - uploads:/export
-
-  # COMMENTED OUT - Traefik will replace this proxy
-  # proxy:
-  #   image: artifacts.plane.so/makeplane/plane-proxy:${APP_RELEASE:-v1.2.1}
-  #   deploy:
-  #     replicas: 1
-  #     restart_policy:
-  #       condition: any
-  #   environment:
-  #     <<: *proxy-env
-  #   ports:
-  #     - target: 80
-  #       published: ${LISTEN_HTTP_PORT:-80}
-  #       protocol: tcp
-  #       mode: host
-  #     - target: 443
-  #       published: ${LISTEN_HTTPS_PORT:-443}
-  #       protocol: tcp
-  #       mode: host
-  #   volumes:
-  #     - proxy_config:/config
-  #     - proxy_data:/data
-  #   depends_on:
-  #     - web
-  #     - api
-  #     - space
-  #     - admin
-  #     - live
-
-volumes:
-  pgdata:
-  redisdata:
-  uploads:
-  logs_api:
-  logs_worker:
-  logs_beat-worker:
-  logs_migrator:
-  rabbitmq_data:
-  proxy_config:
-  proxy_data:
