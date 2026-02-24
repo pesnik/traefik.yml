@@ -1,0 +1,20 @@
+services:
+  jupyter:
+    image: jupyter/base-notebook:latest
+    container_name: jupyter
+    networks:
+      - traefik_default
+    volumes:
+      - ./notebooks:/home/jovyan/work
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+      - JUPYTER_TOKEN=secrettoken
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jupyter.rule=Host(`jupyter.localhost`)"
+      - "traefik.http.routers.jupyter.entrypoints=web"
+      - "traefik.http.services.jupyter.loadbalancer.server.port=8888"
+
+networks:
+  traefik_default:
+    external: true
