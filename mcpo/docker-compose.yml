@@ -1,0 +1,23 @@
+services:
+  mcpo:
+    image: ghcr.io/open-webui/mcpo:main
+    container_name: mcpo
+    restart: unless-stopped
+    command: >
+      --port 8000
+      --
+      npx -y @modelcontextprotocol/server-filesystem
+      /data
+    volumes:
+      - /Users/mr.hasan/Pesnik:/data:ro
+    networks:
+      - traefik_default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mcpo.rule=Host(`mcpo.localhost`)"
+      - "traefik.http.routers.mcpo.entrypoints=web"
+      - "traefik.http.services.mcpo.loadbalancer.server.port=8000"
+
+networks:
+  traefik_default:
+    external: true
