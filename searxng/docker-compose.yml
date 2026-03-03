@@ -1,0 +1,84 @@
+# =====================================================================
+# SearXNG + Redis — Traefik .localhost (no TLS)
+# =====================================================================
+# Before first run:
+#   mkdir -p ./searxng/config ./searxng/data
+#   echo "SEARXNG_SECRET_KEY=$(openssl rand -hex 32)" >> .env
+# =====================================================================
+
+services:
+
+  redis:
+    image: docker.io/valkey/valkey:8-alpine
+    container_name: searxng-redis
+    command: valkey-server --save 30 1 --loglevel warning
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    networks:
+      - internal
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  searxng:
+    image: docker.io/searxng/searxng:latest
+    container_name: searxng
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./searxng/config:/etc/searxng:rw
+      - ./searxng/data:/var/cache/searxng:rw
+    networks:
+      - internal
+      - traefik_default
+    environment:
+      SEARXNG_BASE_URL: "http://searxng.localhost/"
+      SEARXNG_SECRET_KEY: "${SEARXNG_SECRET_KEY}"
+      SEARXNG_REDIS_URL: "redis://redis:6379/0"
+      SEARXNG_NAME: "${SEARXNG_NAME:-SearXNG}"
+      SEARXNG_IMAGE_PROXY: "true"
+      SEARXNG_LIMITER: "false"
+      SEARXNG_PUBLIC_INSTANCE: "false"
+      GRANIAN_WORKERS: "${GRANIAN_WORKERS:-4}"
+      GRANIAN_BLOCKING_THREADS: "${GRANIAN_BLOCKING_THREADS:-4}"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "traefik_default"
+
+      traefik.http.routers.searxng.rule: "Host(`searxng.localhost`)"
+      traefik.http.routers.searxng.entrypoints: "web"
+
+      traefik.http.services.searxng.loadbalancer.server.port: "8080"
+
+      traefik.http.middlewares.searxng-headers.headers.customResponseHeaders.X-Robots-Tag: "noindex, nofollow"
+      traefik.http.middlewares.searxng-headers.headers.customResponseHeaders.X-Content-Type-Options: "nosniff"
+      traefik.http.middlewares.searxng-headers.headers.customResponseHeaders.X-Frame-Options: "SAMEORIGIN"
+      traefik.http.middlewares.searxng-headers.headers.customResponseHeaders.Referrer-Policy: "no-referrer"
+      traefik.http.routers.searxng.middlewares: "searxng-headers"
+
+volumes:
+  redis-data:
+
+networks:
+  internal:
+    internal: true
+  traefik_default:
+    external: true
