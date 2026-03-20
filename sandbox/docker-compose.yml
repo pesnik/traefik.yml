@@ -1,13 +1,4 @@
 services:
-  mcpo:
-    container_name: mcpo
-    image: ghcr.io/open-webui/mcpo:main
-    restart: unless-stopped
-    volumes:
-      - ./mcpo-config:/app/config
-    command: --host 0.0.0.0 --port 8000 --config /app/config/config.json
-    networks:
-      - traefik_default
   sandbox:
     container_name: aio-sandbox
     image: ghcr.io/agent-infra/sandbox:latest
@@ -15,19 +6,17 @@ services:
       - seccomp:unconfined
     extra_hosts:
       - 'host.docker.internal:host-gateway'
-      - 'superset.banglalink.net:172.22.37.131'
+      - 'superset.agentshq.net:172.22.37.131'
     restart: 'unless-stopped'
     shm_size: '2gb'
     mem_limit: '8g'
-    cpus: '4'
-    # ports:
-    #   - "${HOST_PORT:-8080}:8080"
+    # cpus: '4'  # removed - kernel does not support CPU CFS scheduler
     environment:
       PROXY_SERVER: ${PROXY_SERVER:-}
       JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
       DNS_OVER_HTTPS_TEMPLATES: ''
       WORKSPACE: ${WORKSPACE:-"/home/gem"}
-      HOMEPAGE: ${HOMEPAGE:-}
+      HOMEPAGE: https://localhost/sandbox/
       BROWSER_EXTRA_ARGS: ${BROWSER_EXTRA_ARGS:-}
       TZ: ${TZ:-Asia/Singapore}
       DISPLAY_WIDTH: ${DISPLAY_WIDTH:-1280}
@@ -50,50 +39,77 @@ services:
       PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
       UV_DEFAULT_INDEX: ${UV_DEFAULT_INDEX:-https://pypi.org/simple}
       NPM_CONFIG_REGISTRY: ${NPM_CONFIG_REGISTRY:-https://registry.npmjs.org}
-      # for gh cli
       GITHUB_TOKEN: ''
-      # Claude Skills
       AIO_SKILLS_PATH: ${AIO_SKILLS_PATH:-}
-      # Features
       DISABLE_JUPYTER: ${DISABLE_JUPYTER:-false}
       DISABLE_CODE_SERVER: ${DISABLE_CODE_SERVER:-false}
+      JUPYTER_BASE_URL: /sandbox/jupyter
+      CODE_SERVER_BASE_PATH: /sandbox/code
     labels:
       - 'traefik.enable=true'
 
-      # UI Service (port 8080) - only via ui.sandbox.localhost
+      # ── UI Service (port 8080) ── https://localhost/sandbox/
       - 'traefik.http.services.aio-sandbox-ui.loadbalancer.server.port=8080'
-      - 'traefik.http.routers.sandbox-ui.rule=Host(`sandbox.localhost`)'
-      - 'traefik.http.routers.sandbox-ui.entrypoints=web'
+      - "traefik.http.routers.sandbox-ui.rule=Host(`localhost`) && PathPrefix(`/sandbox`)"
+      - 'traefik.http.routers.sandbox-ui.entrypoints=websecure'
+      - 'traefik.http.routers.sandbox-ui.tls=true'
       - 'traefik.http.routers.sandbox-ui.service=aio-sandbox-ui'
+      - 'traefik.http.middlewares.sandbox-strip.stripprefix.prefixes=/sandbox'
+      - 'traefik.http.middlewares.sandbox-headers.headers.customrequestheaders.X-Forwarded-Prefix=/sandbox'
+      - 'traefik.http.routers.sandbox-ui.middlewares=sandbox-strip,sandbox-headers'
 
-      # API Service (port 8091) - works with both api.sandbox.localhost and 127.0.0.1/api-sandbox
+      # ── API Service (port 8091) ── https://localhost/sandbox/api/
       - 'traefik.http.services.aio-sandbox-api.loadbalancer.server.port=8091'
-      - 'traefik.http.routers.sandbox.rule=Host(`api.sandbox.localhost`) || (Host(`127.0.0.1`) && PathPrefix(`/api-sandbox`))'
-      - 'traefik.http.routers.sandbox.entrypoints=web'
-      - 'traefik.http.routers.sandbox.service=aio-sandbox-api'
-      - 'traefik.http.middlewares.sandbox-stripprefix.stripprefix.prefixes=/api-sandbox'
-      - 'traefik.http.routers.sandbox.middlewares=sandbox-stripprefix'
+      - "traefik.http.routers.sandbox-api.rule=Host(`localhost`) && PathPrefix(`/sandbox/api`)"
+      - 'traefik.http.routers.sandbox-api.entrypoints=websecure'
+      - 'traefik.http.routers.sandbox-api.tls=true'
+      - 'traefik.http.routers.sandbox-api.service=aio-sandbox-api'
+      - 'traefik.http.middlewares.sandbox-api-strip.stripprefix.prefixes=/sandbox/api'
+      - 'traefik.http.middlewares.sandbox-api-headers.headers.customrequestheaders.X-Forwarded-Prefix=/sandbox/api'
+      - 'traefik.http.routers.sandbox-api.middlewares=sandbox-api-strip,sandbox-api-headers'        
+      # - 'traefik.http.routers.sandbox-api.middlewares=sandbox-api-strip'
 
-      # VNC WebSocket (port 6080)
+      # ── VNC WebSocket (port 6080) ── https://localhost/sandbox/websockify
       - 'traefik.http.services.aio-vnc.loadbalancer.server.port=6080'
-      - 'traefik.http.routers.sandboxvnc.rule=Host(`sandbox.localhost`) && PathPrefix(`/websockify`)'
-      - 'traefik.http.routers.sandboxvnc.entrypoints=web'
-      - 'traefik.http.routers.sandboxvnc.service=aio-vnc'
+      - "traefik.http.routers.sandbox-vnc.rule=Host(`localhost`) && PathPrefix(`/sandbox/websockify`)"
+      - 'traefik.http.routers.sandbox-vnc.entrypoints=websecure'
+      - 'traefik.http.routers.sandbox-vnc.tls=true'
+      - 'traefik.http.routers.sandbox-vnc.service=aio-vnc'
+      - 'traefik.http.middlewares.sandbox-vnc-strip.stripprefix.prefixes=/sandbox/websockify'
+      - 'traefik.http.routers.sandbox-vnc.middlewares=sandbox-vnc-strip'
 
-      # Jupyter Lab (port 8888)
+      # ── Jupyter Lab (port 8888) ── strip /sandbox but keep /jupyter
       - 'traefik.http.services.aio-jupyter.loadbalancer.server.port=8888'
-      - 'traefik.http.routers.jupyter.rule=Host(`jupyter.localhost`)'
-      - 'traefik.http.routers.jupyter.entrypoints=web'
-      - 'traefik.http.routers.jupyter.service=aio-jupyter'
+      - "traefik.http.routers.sandbox-jupyter.rule=Host(`localhost`) && PathPrefix(`/sandbox/jupyter`)"
+      - 'traefik.http.routers.sandbox-jupyter.entrypoints=websecure'
+      - 'traefik.http.routers.sandbox-jupyter.tls=true'
+      - 'traefik.http.routers.sandbox-jupyter.service=aio-jupyter'
+      - 'traefik.http.middlewares.sandbox-jupyter-strip.stripprefix.prefixes=/sandbox'
+      - 'traefik.http.routers.sandbox-jupyter.middlewares=sandbox-jupyter-strip'
 
-      # Code Server (port 8200)
+      # ── Code Server (port 8200) ── strip full /sandbox/code
       - 'traefik.http.services.aio-code.loadbalancer.server.port=8200'
-      - 'traefik.http.routers.code.rule=Host(`code.localhost`)'
-      - 'traefik.http.routers.code.entrypoints=web'
-      - 'traefik.http.routers.code.service=aio-code'
+      - "traefik.http.routers.sandbox-code.rule=Host(`localhost`) && PathPrefix(`/sandbox/code`)"
+      - 'traefik.http.routers.sandbox-code.entrypoints=websecure'
+      - 'traefik.http.routers.sandbox-code.tls=true'
+      - 'traefik.http.routers.sandbox-code.service=aio-code'
+      - 'traefik.http.middlewares.sandbox-code-strip.stripprefix.prefixes=/sandbox/code'
+      - 'traefik.http.routers.sandbox-code.middlewares=sandbox-code-strip'
+
+      # ── CDP DevTools WebSocket ──
+      - 'traefik.http.services.aio-sandbox-cdp.loadbalancer.server.port=8080'
+      - "traefik.http.routers.sandbox-cdp.rule=Host(`localhost`) && PathPrefix(`/sandbox/api/cdp`)"
+      - 'traefik.http.routers.sandbox-cdp.entrypoints=websecure'
+      - 'traefik.http.routers.sandbox-cdp.tls=true'
+      - 'traefik.http.routers.sandbox-cdp.service=aio-sandbox-cdp'
+      - 'traefik.http.middlewares.sandbox-cdp-strip.stripprefix.prefixes=/sandbox/api'
+      - 'traefik.http.routers.sandbox-cdp.middlewares=sandbox-cdp-strip'
+      - 'traefik.http.routers.sandbox-cdp.priority=200'
+      - 'traefik.http.routers.sandbox-api.priority=100'
+
     networks:
-      - traefik_default
+      - traefik-network
 
 networks:
-  traefik_default:
+  traefik-network:
     external: true
