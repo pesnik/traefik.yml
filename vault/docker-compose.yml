@@ -1,0 +1,52 @@
+services:
+  vault:
+    image: hashicorp/vault:latest
+    restart: unless-stopped
+    # Bypass docker-entrypoint.sh entirely. The entrypoint's job is:
+    #   1. setcap IPC_LOCK on the binary  → we grant it at container level
+    #   2. chown /vault/* to vault user   → named volumes inherit ownership
+    #                                       from the image (vault:vault)
+    #   3. su-exec to vault user          → we set user: directly
+    # Keeping dumb-init as PID 1 for proper signal forwarding + zombie reaping.
+    entrypoint: ["/usr/bin/dumb-init", "--", "vault", "server", "-config=/vault/config/vault.hcl"]
+    user: "100:1000"  # vault:vault — never runs as root
+    cap_add:
+      - IPC_LOCK      # mlock: prevents secrets from swapping to disk
+    cap_drop:
+      - ALL           # drop every other capability
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      VAULT_ADDR: "http://127.0.0.1:8200"
+      VAULT_LOG_LEVEL: "info"
+      VAULT_LOG_FORMAT: "json"
+    volumes:
+      - ./config:/vault/config:ro   # config — read-only at runtime
+      - vault-file:/vault/file      # raft storage — named vol inherits vault:vault
+      - vault-logs:/vault/logs      # audit logs  — named vol inherits vault:vault
+    networks:
+      - traefik_default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.vault.rule=Host(`vault.localhost`)"
+      - "traefik.http.routers.vault.entrypoints=web"
+      - "traefik.http.services.vault.loadbalancer.server.port=8200"
+    healthcheck:
+      # vault status exit codes: 0=active, 1=error/unreachable, 2=sealed.
+      # Sealed (2) is normal before init/unseal — treat it as healthy.
+      # Only exit 1 (connection refused) means the process is actually down.
+      # Traefik v3 skips containers Docker marks unhealthy, so this must
+      # never return unhealthy while vault is merely sealed.
+      test: ["CMD-SHELL", "vault status 2>&1 || [ $$? -eq 2 ]"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  vault-file:
+  vault-logs:
+
+networks:
+  traefik_default:
+    external: true
