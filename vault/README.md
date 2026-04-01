@@ -105,6 +105,13 @@ Place `.hcl` files in `policies/` — they are mounted read-only at `/vault/poli
 vault policy write my-policy /vault/policies/my-policy.hcl
 ```
 
+## Colima / mlock note
+
+Colima's Lima VM kernel does not support `mlock`, so `disable_mlock = true` is
+set in `config/vault.hcl`. This means Vault memory could theoretically swap to
+disk. Acceptable for a local homelab — if you move to bare Linux or OrbStack,
+set it back to `false`.
+
 ## Traefik integration note
 
 Traefik v3 skips containers Docker marks as `unhealthy`. The healthcheck uses
