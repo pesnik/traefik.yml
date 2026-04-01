@@ -22,8 +22,8 @@ services:
       VAULT_LOG_FORMAT: "json"
     volumes:
       - ./config:/vault/config:ro   # config — read-only at runtime
-      - vault-file:/vault/file      # raft storage — named vol inherits vault:vault
-      - vault-logs:/vault/logs      # audit logs  — named vol inherits vault:vault
+      - ./data:/vault/file          # raft storage — local bind mount
+      - ./logs:/vault/logs          # audit logs  — local bind mount
     networks:
       - traefik_default
     labels:
@@ -42,10 +42,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-
-volumes:
-  vault-file:
-  vault-logs:
 
 networks:
   traefik_default:
