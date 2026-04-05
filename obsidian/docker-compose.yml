@@ -1,0 +1,98 @@
+########################################################################
+#  Obsidian — Docker Compose
+#  Image: lscr.io/linuxserver/obsidian (Selkies/WebRTC GUI in browser)
+#  Access: http://obsidian.localhost  (via your existing Traefik)
+#  Docs:   https://docs.linuxserver.io/images/docker-obsidian/
+########################################################################
+
+networks:
+  traefik_default:
+    external: true   # Attach to your existing Traefik network
+
+services:
+  obsidian:
+    image: lscr.io/linuxserver/obsidian:latest
+    container_name: obsidian
+    restart: unless-stopped
+
+    # ---- Security (Electron/Chromium requirements) ----
+    security_opt:
+      - no-new-privileges:false  # Must be false — Electron needs privilege escalation
+      - seccomp:unconfined       # Required for Chromium syscalls
+
+    # ---- Shared Memory (Electron OOMs without this) ----
+    shm_size: ${SHM_SIZE:-2gb}
+
+    # ---- Networking ----
+    networks:
+      - traefik_default
+
+    # ---- Persistent Storage ----
+    volumes:
+      - ./config:/config
+      # To mount a specific vault folder separately, uncomment:
+      # - ./vault:/config/obsidian-vault
+
+    # ---- Environment ----
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Etc/UTC}
+
+      # Built-in Basic Auth for the web UI
+      - CUSTOM_USER=${CUSTOM_USER:-admin}
+      - PASSWORD=${PASSWORD:-changeme}
+
+      # Internal ports (Traefik proxies to HTTP port 3000)
+      - CUSTOM_PORT=3000
+      - CUSTOM_HTTPS_PORT=3001
+
+      - TITLE=Obsidian
+
+      # ---- Selkies stream settings ----
+      - SELKIES_ENCODER=x264enc          # x264enc | x264enc-striped | jpeg
+      - SELKIES_FRAMERATE=30             # fixed value or range e.g. 8-60
+      - SELKIES_AUDIO_ENABLED=true
+      - SELKIES_CLIPBOARD_ENABLED=true
+      - SELKIES_FILE_TRANSFERS=upload,download
+
+      # ---- Selkies sidebar ----
+      - SELKIES_UI_SHOW_SIDEBAR=true
+      - SELKIES_UI_SIDEBAR_SHOW_VIDEO_SETTINGS=true
+      - SELKIES_UI_SIDEBAR_SHOW_AUDIO_SETTINGS=true
+      - SELKIES_UI_SIDEBAR_SHOW_FILES=true
+      - SELKIES_UI_SIDEBAR_SHOW_FULLSCREEN=true
+
+      # ---- Security hardening (uncomment to lock down the desktop) ----
+      # - HARDEN_DESKTOP=true    # disables sudo, terminals, open tools
+      # - RESTART_APP=true       # auto-restart Obsidian if it closes
+
+      # ---- GPU Hardware Acceleration (Intel/AMD) ----
+      # Also uncomment the `devices` section below
+      # - PIXELFLUX_WAYLAND=true
+      # - DRINODE=/dev/dri/renderD128
+      # - DRI_NODE=/dev/dri/renderD128
+      # - AUTO_GPU=true
+
+    # ---- GPU devices — uncomment for Intel/AMD hardware acceleration ----
+    # devices:
+    #   - /dev/dri:/dev/dri
+
+    # ---- Healthcheck ----
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/3000' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s   # Electron takes a while on first boot
+
+    # ---- Traefik labels ----
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik_default"
+
+      # ── HTTP router → http://obsidian.localhost ──────────────────────
+      - "traefik.http.routers.obsidian.rule=Host(`obsidian.localhost`)"
+      - "traefik.http.routers.obsidian.entrypoints=web"
+      - "traefik.http.services.obsidian.loadbalancer.server.port=3000"
+      - "traefik.http.services.obsidian.loadbalancer.server.scheme=http"
