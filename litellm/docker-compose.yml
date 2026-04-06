@@ -20,6 +20,7 @@ services:
     networks:
       - default
       - traefik_default
+      - langfuse_default
     environment:
       DATABASE_URL: "postgresql://llmproxy:dbpassword9090@db:5432/litellm"
       STORE_MODEL_IN_DB: "True" # allows adding models to proxy via UI
@@ -73,4 +74,6 @@ volumes:
 
 networks:
   traefik_default:
+    external: true
+  langfuse_default:
     external: true
