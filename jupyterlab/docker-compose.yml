@@ -10,6 +10,8 @@ services:
     environment:
       - JUPYTER_ENABLE_LAB=yes
       - JUPYTER_TOKEN=secrettoken
+      # - NOTEBOOK_ARGS=--NotebookApp.base_url=/jupyter/
+      # - MARIMO_BASE_URL=/jupyter/marimo/
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.jupyter.rule=Host(`jupyter.localhost`)"
