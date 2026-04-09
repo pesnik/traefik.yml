@@ -1,6 +1,7 @@
 services:
   jupyter:
-    image: jupyter/base-notebook:latest
+    # image: jupyter/base-notebook:latest
+    build: .
     container_name: jupyter
     networks:
       - traefik_default
