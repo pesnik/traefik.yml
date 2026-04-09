@@ -10,9 +10,8 @@ services:
     environment:
       - JUPYTER_ENABLE_LAB=yes
       - JUPYTER_TOKEN=mysecrettoken
-      - JUPYTERHUB_SERVICE_PREFIX=/jupyter/
-      - NOTEBOOK_ARGS=--NotebookApp.base_url=/jupyter/ --MarimoProxyConfig.no_sandbox=True --MarimoProxyConfig.marimo_path=/opt/conda/bin/marimo --MarimoProxyConfig.host=127.0.0.1
-      - MARIMO_BASE_URL=/jupyter/marimo/
+      - JUPYTERHUB_SERVICE_PREFIX=/
+      - NOTEBOOK_ARGS=--NotebookApp.base_url=/ --MarimoProxyConfig.no_sandbox=True --MarimoProxyConfig.marimo_path=/opt/conda/bin/marimo --MarimoProxyConfig.host=127.0.0.1
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.jupyter.rule=Host(`jupyter.localhost`)"
