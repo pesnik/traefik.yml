@@ -1,23 +1,29 @@
 services:
   jupyter:
-    # image: jupyter/base-notebook:latest
     build: .
     container_name: jupyter
+    user: root
+    entrypoint: ["bash", "-c", "chmod 666 /var/run/docker.sock && start-notebook.sh"]
     networks:
       - traefik_default
     volumes:
-      - ./notebooks:/home/jovyan/work
+      - /Users/mr.hasan:/home/jovyan/work
+      - /Users/mr.hasan:/Users/mr.hasan
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - JUPYTER_ENABLE_LAB=yes
       - JUPYTER_TOKEN=mysecrettoken
       - JUPYTERHUB_SERVICE_PREFIX=/
+      - NB_USER=jovyan
+      - NB_UID=1000
+      - GRANT_SUDO=yes
       - NOTEBOOK_ARGS=--NotebookApp.base_url=/ --MarimoProxyConfig.no_sandbox=True --MarimoProxyConfig.marimo_path=/opt/conda/bin/marimo --MarimoProxyConfig.host=127.0.0.1
+      - JUPYTERLAB_SETTINGS_DIR=/home/jovyan/.jupyter/lab/user-settings
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.jupyter.rule=Host(`jupyter.localhost`)"
       - "traefik.http.routers.jupyter.entrypoints=web"
       - "traefik.http.services.jupyter.loadbalancer.server.port=8888"
-
 networks:
   traefik_default:
     external: true
