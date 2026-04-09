@@ -1,0 +1,26 @@
+services:
+  jupyter:
+    # image: jupyter/base-notebook:latest
+    build: .
+    container_name: jupyter
+    networks:
+      - traefik-network
+    volumes:
+      - /app:/home/jovyan/work
+      - /scripts:/scripts
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+      - JUPYTER_TOKEN=mysecrettoken
+      - JUPYTERHUB_SERVICE_PREFIX=/jupyter/
+      - NOTEBOOK_ARGS=--NotebookApp.base_url=/jupyter/ --MarimoProxyConfig.no_sandbox=True --MarimoProxyConfig.marimo_path=/opt/conda/bin/marimo --MarimoProxyConfig.host=127.0.0.1
+      - MARIMO_BASE_URL=/jupyter/marimo/
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jupyter.rule=Host(`host.machine.com`) && PathPrefix(`/jupyter`)"
+      - "traefik.http.routers.jupyter.entrypoints=websecure"
+      - "traefik.http.routers.jupyter.tls=true"
+      - "traefik.http.services.jupyter.loadbalancer.server.port=8888"
+
+networks:
+  traefik-network:
+    external: true
