@@ -1,0 +1,39 @@
+services:
+  jupyterhub:
+    build:
+      context: .
+      dockerfile: Dockerfile.hub
+    image: jupyterhub:latest
+    container_name: jupyterhub
+    restart: unless-stopped
+    networks:
+      - traefik-network
+      - jupyterhub-net
+    volumes:
+      # Hub config (read-only — edit on host, then `docker compose restart jupyterhub`)
+      - ./jupyterhub_config.py:/srv/jupyterhub/jupyterhub_config.py:ro
+      # Persistent hub state: SQLite DB + cookie secret
+      - jupyterhub-data:/srv/jupyterhub
+      # Shared parent for all per-user home dirs (pre_spawn_hook creates subdirs)
+      - <YOUR_DEPLOY_DIR>/userdata:<YOUR_DEPLOY_DIR>/userdata
+      # Rootless Docker socket — required for DockerSpawner to create user containers
+      - <YOUR_DOCKER_SOCKET>:/var/run/docker.sock
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jupyterhub.rule=Host(`<YOUR_DOMAIN>`) && PathPrefix(`/jupyter`)"
+      - "traefik.http.routers.jupyterhub.entrypoints=websecure"
+      - "traefik.http.routers.jupyterhub.tls=true"
+      - "traefik.http.services.jupyterhub.loadbalancer.server.port=8000"
+
+volumes:
+  jupyterhub-data:
+
+networks:
+  traefik-network:
+    external: true
+  # Network shared between hub and all spawned user containers.
+  # Explicit name so DockerSpawner can reference it correctly.
+  jupyterhub-net:
+    name: jupyterhub-net

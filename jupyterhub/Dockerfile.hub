@@ -1,0 +1,16 @@
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc python3-dev nodejs npm \
+    && npm install -g configurable-http-proxy \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir \
+    "jupyterhub==5.*" \
+    jupyterhub-ldapauthenticator \
+    dockerspawner
+
+RUN mkdir -p /srv/jupyterhub
+WORKDIR /srv/jupyterhub
+
+CMD ["jupyterhub", "--config", "/srv/jupyterhub/jupyterhub_config.py"]
